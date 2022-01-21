@@ -4,8 +4,8 @@ function FindProxyForURL(url) {
 }
 
 const proxySettings = {
-  // proxyType: 'autoConfig',
-  proxyType: 'system',
+  proxyType: 'autoConfig',
+  // proxyType: 'system',
   autoConfigUrl: 'data:text/javascript,' + encodeURIComponent(FindProxyForURL.toString()),
   httpProxyAll: true,
   http: '127.0.0.1:8080',
