@@ -1,68 +1,57 @@
-function FindProxyForURL(url) {
-  const i = Math.random() * 100000000000000000;
-  return 'PROXY ' + i + '.proxy.edited.com:8080';
+const redirectCache = new Map();
+
+function onRequest(req) {
+  const host = redirectCache.has(req.url);
+  if (host) {
+    return {
+      type: 'http',
+      host,
+      port: '8080',
+      username: host,
+      password: ''
+    }
+  }
+  const proxy = `${Math.random() * 100000000000000000}.proxy.edited.com`;
+  return {
+    type: 'http',
+    host: proxy,
+    port: '8080',
+    username: proxy,
+    password: ''
+  }
 }
 
-const proxySettings = {
-  proxyType: 'autoConfig',
-  // proxyType: 'system',
-  autoConfigUrl: 'data:text/javascript,' + encodeURIComponent(FindProxyForURL.toString()),
-  httpProxyAll: true,
-  http: '127.0.0.1:8080',
-  socksVersion: 4,
-  passthrough: ""
-};
-browser.proxy.settings.set({value: proxySettings});
+function onBeforeRedirect(req) {
+  redirectCache.set(req.url, req.proxyInfo.host);
+}
 
-const onBeforeRedirect = (request) => {
-  console.log(`TCP Forwarding [${request.requestId}]: ${request.method} ${request.url}`);
-};
+function onBeforeRequest(req) {
+  if (redirectCache.has(req.url)) {
+    redirectCache.delete(req.url);
+  }
+}
 
-const onAuthRequired = (request) => {
-  console.log(`onAuthRequired [${request.requestId}]: ${request.method} ${request.url}`);
-
-  // LATER check that it's a proxy credentials request, not a normal http auth request
-  // LATER do the fragment truncation properly
-  // truncate at the fragment because the http server wont get it either
-  const url = request.url.replace(/#.*/, '');
-
+function onAuthRequired(req) {
+  console.dir(req)
   return {
-    authCredentials: {
-      username: 'v1',
-      password: url
-    }
-  };
-};
+    username: '',
+    password: ''
+  }
+}
+
+function onBeforeSendHeaders(req) {
+  const requestHeaders = req.requestHeaders;
+  requestHeaders.push({name: 'connection', value: 'close'});
+  if (redirectCache.get(req.url)) {
+    const auth = btoa(req.url + ':1');
+    requestHeaders.push({name: 'proxy-authorization', value: `basic ${auth}`});
+  }
+  return {requestHeaders};
+}
 
 const allUrlsFilter = {urls: ['<all_urls>']};
+browser.proxy.onRequest.addListener(onRequest, allUrlsFilter);
 browser.webRequest.onBeforeRedirect.addListener(onBeforeRedirect, allUrlsFilter, ['responseHeaders']);
+browser.webRequest.onBeforeRequest.addListener(onBeforeRequest, allUrlsFilter, ['requestBody']);
 browser.webRequest.onAuthRequired.addListener(onAuthRequired, allUrlsFilter, ['blocking']);
-
-browser.proxy.onError.addListener(function ({details, error, fatal}) {
-  console.log(`onError: ${details} ${error} ${fatal}`);
-});
-
-function getRedirectId (request) {
-  return request.responseHeaders.find(({name}) => name === 'x-proxy-redirect-id')?.value;
-}
-
-/*
-browser requests http://postman-echo.com/get
-browser does a proxy CONNECT to a unique proxy hostname
-  proxy returns a 407 with a Proxy-Authenticate header
-    browser fires onAuthRequired
-    browser encodes the url into the credentials
-    browser retries the CONNECT with credentials
-      proxy reads auth headers and decodes url from the credentials
-      proxy can't find a forwarding flag for the url so it passes connection to TLS server
-      TLS server gets blocked & returns a 307 redirect with a state_id header (for logging purposes)
-        browser fires onBeforeRedirect and logs the state_id header with the redirect url
-        browser does a proxy CONNECT to a unique proxy hostname
-          proxy returns a 407 with a Proxy-Authenticate header
-            browser fires onAuthRequired
-            browser encodes the url into the credentials
-            browser retries the CONNECT with credentials
-              proxy reads auth headers and decodes url from the credentials
-              proxy finds a forwarding flag for the url so it passes connection to the forwarding server
-              forwarding server opens a tcp connection to the destination & joins the streams
-*/
+browser.webRequest.onBeforeSendHeaders.addListener(onBeforeSendHeaders, allUrlsFilter, ['blocking', 'requestHeaders']);
