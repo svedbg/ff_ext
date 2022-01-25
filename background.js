@@ -1,6 +1,6 @@
 const redirectCache = new Map();
 
-function onRequest(req) {
+function handleProxyRequest(req) {
   const host = redirectCache.get(req.url);
   if (host) {
     return {
@@ -11,14 +11,14 @@ function onRequest(req) {
     }
   }
   const proxy = `${Math.random() * 100000000000000000}.proxy.edited.com`;
-  console.dir(btoa('v1:' + req.url))
-  console.dir(proxy)
-  return {
+  const proxyInfo = {
     type: 'http',
     host: proxy,
     port: '8080',
     proxyAuthorizationHeader: `Basic ${btoa('v1:' + req.url)}`
-  }
+  };
+  console.dir(proxyInfo)
+  return proxyInfo;
 }
 
 function onBeforeRedirect(req) {
@@ -50,7 +50,7 @@ function onBeforeSendHeaders(req) {
 }
 
 const allUrlsFilter = {urls: ['<all_urls>']};
-browser.proxy.onRequest.addListener(onRequest, allUrlsFilter, ['requestHeaders']);
+browser.proxy.onRequest.addListener(handleProxyRequest, allUrlsFilter);
 browser.webRequest.onBeforeRedirect.addListener(onBeforeRedirect, allUrlsFilter, ['responseHeaders']);
 browser.webRequest.onBeforeRequest.addListener(onBeforeRequest, allUrlsFilter, ['requestBody']);
 browser.webRequest.onAuthRequired.addListener(onAuthRequired, allUrlsFilter, ['blocking']);
